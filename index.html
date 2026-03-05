@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Universal System Dynamics Lab</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <style>
+        :root { --primary: #2563eb; --bg: #f8fafc; }
+        body { font-family: system-ui, sans-serif; margin: 0; display: flex; height: 100vh; background: var(--bg); }
+        #sidebar { width: 350px; background: white; border-right: 1px solid #e2e8f0; padding: 20px; overflow-y: auto; }
+        #viewer { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+        .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        input, select { width: 100%; padding: 8px; margin: 5px 0 10px 0; border: 1px solid #cbd5e1; border-radius: 4px; }
+        .eq-row { display: flex; align-items: center; gap: 10px; }
+        .param-grid { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 10px; align-items: center; }
+        h3 { margin-top: 0; font-size: 1rem; color: #1e293b; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        button { background: var(--primary); color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; width: 100%; }
+        .slider-label { font-family: monospace; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>System Config</h2>
+    
+    <div class="card">
+        <h3>1. Define State Variables</h3>
+        <p style="font-size: 0.8rem; color: #64748b;">Comma separated (e.g., S, I, R)</p>
+        <input type="text" id="varList" value="S, I, R" oninput="setupSystem()">
+    </div>
+
+    <div id="equation-container" class="card">
+        <h3>2. Differential Equations</h3>
+        </div>
+
+    <div id="parameter-container" class="card">
+        <h3>3. Dynamic Parameters</h3>
+        </div>
+
+    <div class="card">
+        <h3>4. Phase Plane View</h3>
+        <label>X Axis</label><select id="phaseX" onchange="update()"></select>
+        <label>Y Axis</label><select id="phaseY" onchange="update()"></select>
+    </div>
+</div>
+
+<div id="viewer">
+    <div id="plot-ts" class="card" style="height: 450px;"></div>
+    <div id="plot-phase" class="card" style="height: 450px;"></div>
+</div>
+
+<script>
+let stateVars = [];
+let params = {};
+
+function setupSystem() {
+    const input = document.getElementById('varList').value;
+    stateVars = input.split(',').map(s => s.trim()).filter(s => s !== "");
+    
+    // Update Equation Inputs
+    const eqContainer = document.getElementById('equation-container');
+    const oldVals = Array.from(eqContainer.querySelectorAll('input')).map(i => i.value);
+    eqContainer.innerHTML = '<h3>2. Differential Equations</h3>';
+    
+    stateVars.forEach((v, i) => {
+        const defaultEq = v === 'S' ? '-b*S*I' : v === 'I' ? 'b*S*I - g*I' : v === 'R' ? 'g*I' : '0';
+        eqContainer.innerHTML += `
+            <div class="eq-row">
+                <span style="white-space:nowrap">d${v}/dt =</span>
+                <input type="text" class="eq-input" data-var="${v}" value="${oldVals[i] || defaultEq}" oninput="scanParameters()">
+            </div>
+            <div class="eq-row">
+                <span style="font-size:0.7rem">${v}(0) =</span>
+                <input type="number" class="init-input" data-var="${v}" value="${v === 'I' ? 1 : 100}" oninput="update()">
+            </div>
+        `;
+    });
+
+    // Update Phase Plane Selects
+    const px = document.getElementById('phaseX');
+    const py = document.getElementById('phaseY');
+    [px, py].forEach(select => {
+        const current = select.value;
+        select.innerHTML = stateVars.map(v => `<option value="${v}">${v}</option>`).join('');
+        if (stateVars.includes(current)) select.value = current;
+    });
+
+    scanParameters();
+}
+
+function scanParameters() {
+    const eqInputs = document.querySelectorAll('.eq-input');
+    const foundParams = new Set();
+    
+    eqInputs.forEach(input => {
+        try {
+            const node = math.parse(input.value);
+            node.filter(n => n.isSymbolNode).forEach(n => {
+                if (!stateVars.includes(n.name) && !math[n.name] && n.name !== 't') {
+                    foundParams.add(n.name);
+                }
+            });
+        } catch(e) {}
+    });
+
+    const paramContainer = document.getElementById('parameter-container');
+    paramContainer.innerHTML = '<h3>3. Dynamic Parameters</h3>';
+    
+    foundParams.forEach(p => {
+        if (params[p] === undefined) params[p] = 0.1;
+        paramContainer.innerHTML += `
+            <div class="param-grid">
+                <span class="slider-label">${p}</span>
+                <input type="range" min="0" max="2" step="0.001" value="${params[p]}" 
+                    oninput="params['${p}']=parseFloat(this.value); this.nextElementSibling.innerText=this.value; update()">
+                <span style="font-size:0.8rem">${params[p]}</span>
+            </div>
+        `;
+    });
+    update();
+}
+
+function rk4(system, t0, y0, dt, steps) {
+    let t = t0; let y = [...y0]; const history = [[t, ...y]];
+    for (let i = 0; i < steps; i++) {
+        const k1 = system(t, y).map(v => v * dt);
+        const k2 = system(t + dt/2, y.map((v, j) => v + k1[j]/2)).map(v => v * dt);
+        const k3 = system(t + dt/2, y.map((v, j) => v + k2[j]/2)).map(v => v * dt);
+        const k4 = system(t + dt, y.map((v, j) => v + k3[j])).map(v => v * dt);
+        y = y.map((v, j) => v + (k1[j] + 2*k2[j] + 2*k3[j] + k4[j]) / 6);
+        t += dt; history.push([t, ...y]);
+    }
+    return history;
+}
+
+function update() {
+    try {
+        const compiledEqs = Array.from(document.querySelectorAll('.eq-input')).map(i => math.compile(i.value));
+        const initValues = Array.from(document.querySelectorAll('.init-input')).map(i => parseFloat(i.value));
+        
+        const system = (t, y) => {
+            const scope = { t, ...params };
+            stateVars.forEach((v, i) => scope[v] = y[i]);
+            return compiledEqs.map(eq => eq.evaluate(scope));
+        };
+
+        const results = rk4(system, 0, initValues, 0.2, 500);
+        
+        // Time Series
+        const tsTraces = stateVars.map((v, idx) => ({
+            x: results.map(r => r[0]),
+            y: results.map(r => r[idx+1]),
+            name: v
+        }));
+        Plotly.newPlot('plot-ts', tsTraces, { title: 'Time Series Solution', margin: {t:40} });
+
+        // Phase Plane
+        const xVar = document.getElementById('phaseX').value;
+        const yVar = document.getElementById('phaseY').value;
+        const xIdx = stateVars.indexOf(xVar) + 1;
+        const yIdx = stateVars.indexOf(yVar) + 1;
+
+        Plotly.newPlot('plot-phase', [{
+            x: results.map(r => r[xIdx]),
+            y: results.map(r => r[yIdx]),
+            mode: 'lines',
+            name: 'Trajectory'
+        }], { title: `Phase Plane: ${yVar} vs ${xVar}`, xaxis: {title: xVar}, yaxis: {title: yVar}, margin: {t:40} });
+
+    } catch (err) { console.error("Calculation Error", err); }
+}
+
+// Initial Setup
+setupSystem();
+</script>
+</body>
+</html>
