@@ -9,70 +9,41 @@
     <style>
         :root { --primary: #2563eb; --bg: #f8fafc; --border: #e2e8f0; }
         body { font-family: system-ui, -apple-system, sans-serif; margin: 0; display: flex; height: 100vh; background: var(--bg); color: #1e293b; }
-        
         #sidebar { width: 380px; background: white; border-right: 1px solid var(--border); padding: 20px; overflow-y: auto; box-shadow: 2px 0 5px rgba(0,0,0,0.02); }
         h2 { margin-top: 0; font-size: 1.25rem; color: var(--primary); border-bottom: 2px solid var(--bg); padding-bottom: 10px; }
         h3 { font-size: 0.9rem; margin: 15px 0 10px 0; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; }
-        
         .card { background: #ffffff; border: 1px solid var(--border); padding: 15px; border-radius: 8px; margin-bottom: 15px; }
         input[type="text"], input[type="number"], select { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; }
-        
-        /* THE MATH FONT STYLING */
-        .eq-input, .param-num-input, .init-input { 
-            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-            font-size: 1rem;
-            letter-spacing: 0.02em;
-            color: #1e293b;
-        }
-
+        .eq-input, .param-num-input, .init-input { font-family: "SFMono-Regular", Consolas, monospace; font-size: 1rem; color: #1e293b; }
         .eq-input { background: #f8fafc; border: 1px solid #cbd5e1 !important; }
-
-        /* Italicized variable labels to look like math symbols */
-        .math-label { 
-            font-family: "Times New Roman", Times, serif; 
-            font-style: italic; 
-            font-size: 1.1rem; 
-            font-weight: 500;
-        }
-
+        .math-label { font-family: "Times New Roman", Times, serif; font-style: italic; font-size: 1.1rem; font-weight: 500; }
         .eq-row { display: grid; grid-template-columns: 80px 1fr; align-items: center; gap: 8px; margin-bottom: 8px; }
         .init-row { display: grid; grid-template-columns: 80px 1fr; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.85rem; }
-
         .param-grid { display: grid; grid-template-columns: 50px 1fr 80px; gap: 10px; align-items: center; margin-bottom: 10px; }
-        
         #viewer { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
-        .plot-container { background: white; border-radius: 8px; border: 1px solid var(--border); min-height: 400px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .plot-container { background: white; border-radius: 8px; border: 1px solid var(--border); min-height: 450px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
     </style>
 </head>
 <body>
 
 <div id="sidebar">
     <h2>System Explorer</h2>
-    
     <div class="card">
         <h3>1. State Variables</h3>
         <input type="text" id="varList" value="x, y" oninput="setupSystem()">
     </div>
-
-    <div id="equation-container" class="card">
-        <h3>2. Differential Equations</h3>
-    </div>
-
-    <div id="parameter-container" class="card">
-        <h3>3. Dynamic Parameters</h3>
-    </div>
-
+    <div id="equation-container" class="card"><h3>2. Differential Equations</h3></div>
+    <div id="parameter-container" class="card"><h3>3. Dynamic Parameters</h3></div>
     <div class="card">
-        <h3>4. Phase Plane View</h3>
+        <h3>4. Simulation Settings</h3>
+        <label style="font-size: 0.7rem;">Total Time Steps</label>
+        <input type="number" id="totalSteps" value="1000" oninput="update()">
+    </div>
+    <div class="card">
+        <h3>5. Phase Plane View</h3>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-            <div>
-                <label style="font-size: 0.7rem;">X Axis</label>
-                <select id="phaseX" onchange="update()"></select>
-            </div>
-            <div>
-                <label style="font-size: 0.7rem;">Y Axis</label>
-                <select id="phaseY" onchange="update()"></select>
-            </div>
+            <div><label style="font-size: 0.7rem;">X Axis</label><select id="phaseX" onchange="update()"></select></div>
+            <div><label style="font-size: 0.7rem;">Y Axis</label><select id="phaseY" onchange="update()"></select></div>
         </div>
     </div>
 </div>
@@ -89,71 +60,45 @@ let params = {};
 function setupSystem() {
     const input = document.getElementById('varList').value;
     stateVars = input.split(',').map(s => s.trim()).filter(s => s !== "");
-    
     const eqContainer = document.getElementById('equation-container');
     const oldEqs = {}; const oldInits = {};
     eqContainer.querySelectorAll('.eq-input').forEach(i => oldEqs[i.dataset.var] = i.value);
     eqContainer.querySelectorAll('.init-input').forEach(i => oldInits[i.dataset.var] = i.value);
-
     eqContainer.innerHTML = '<h3>2. Differential Equations</h3>';
-    
     stateVars.forEach((v) => {
         const defEq = v === 'x' ? "a*x - b*x*y" : v === 'y' ? "c*x*y - d*y" : "0.1*"+v;
-        const defInit = v === 'x' ? "10" : "5";
-
-        eqContainer.innerHTML += `
-            <div class="eq-row">
-                <span class="math-label">d${v}/dt =</span>
-                <input type="text" class="eq-input" data-var="${v}" value="${oldEqs[v] || defEq}" oninput="scanParameters()">
-            </div>
-            <div class="init-row">
-                <span class="math-label" style="font-size:0.85rem">${v}(0) =</span>
-                <input type="number" class="init-input" data-var="${v}" value="${oldInits[v] || defInit}" step="any" oninput="update()">
-            </div>
-        `;
+        eqContainer.innerHTML += `<div class="eq-row"><span class="math-label">d${v}/dt =</span><input type="text" class="eq-input" data-var="${v}" value="${oldEqs[v] || defEq}" oninput="scanParameters()"></div>
+            <div class="init-row"><span class="math-label" style="font-size:0.85rem">${v}(0) =</span><input type="number" class="init-input" data-var="${v}" value="${oldInits[v] || 10}" step="any" oninput="update()"></div>`;
     });
-
-    const px = document.getElementById('phaseX');
-    const py = document.getElementById('phaseY');
+    const px = document.getElementById('phaseX'); const py = document.getElementById('phaseY');
     [px, py].forEach(select => {
         const current = select.value;
         select.innerHTML = stateVars.map(v => `<option value="${v}">${v}</option>`).join('');
         if (stateVars.includes(current)) select.value = current;
         else if (select === py && stateVars.length > 1) select.selectedIndex = 1;
     });
-
     scanParameters();
 }
 
 function scanParameters() {
     const eqInputs = document.querySelectorAll('.eq-input');
     const foundParams = new Set();
-    
     eqInputs.forEach(input => {
         try {
             const node = math.parse(input.value);
             node.filter(n => n.isSymbolNode).forEach(n => {
-                if (!stateVars.includes(n.name) && !math[n.name] && n.name !== 't') {
-                    foundParams.add(n.name);
-                }
+                if (!stateVars.includes(n.name) && !math[n.name] && n.name !== 't') foundParams.add(n.name);
             });
         } catch(e) {}
     });
-
     const paramContainer = document.getElementById('parameter-container');
     paramContainer.innerHTML = '<h3>3. Dynamic Parameters</h3>';
-    
     foundParams.forEach(p => {
         if (params[p] === undefined) params[p] = 0.5;
         const div = document.createElement('div');
         div.className = 'param-grid';
-        div.innerHTML = `
-            <span class="math-label" style="font-size:1rem">${p}</span>
-            <input type="range" class="p-slider" min="0" max="5" step="0.01" value="${params[p]}">
-            <input type="number" class="param-num-input" step="any" value="${params[p]}">
-        `;
-        const slider = div.querySelector('.p-slider');
-        const num = div.querySelector('.param-num-input');
+        div.innerHTML = `<span class="math-label">${p}</span><input type="range" class="p-slider" min="0" max="5" step="0.01" value="${params[p]}"><input type="number" class="param-num-input" step="any" value="${params[p]}">`;
+        const slider = div.querySelector('.p-slider'); const num = div.querySelector('.param-num-input');
         slider.oninput = () => { params[p] = parseFloat(slider.value); num.value = slider.value; update(); };
         num.oninput = () => { params[p] = parseFloat(num.value); slider.value = num.value; update(); };
         paramContainer.appendChild(div);
@@ -179,16 +124,29 @@ function update() {
         const eqInputs = document.querySelectorAll('.eq-input');
         const compiledEqs = Array.from(eqInputs).map(i => math.compile(i.value));
         const initValues = Array.from(document.querySelectorAll('.init-input')).map(i => parseFloat(i.value || 0));
+        const steps = parseInt(document.getElementById('totalSteps').value) || 500;
+        
         const system = (t, y) => {
             const scope = { t, ...params };
             stateVars.forEach((v, i) => scope[v] = y[i]);
             return compiledEqs.map(eq => eq.evaluate(scope));
         };
-        const results = solveRK4(system, initValues, 0.1, 500);
+        
+        const results = solveRK4(system, initValues, 0.1, steps);
         const tsTraces = stateVars.map((v, i) => ({
             x: results.map(r => r[0]), y: results.map(r => r[i+1]), name: v, mode: 'lines'
         }));
-        Plotly.newPlot('plot-ts', tsTraces, { title: 'Temporal Evolution', margin: {t:40}, xaxis: {title: 'Time (t)'}}, {responsive: true});
+
+        // ADDED: xaxis rangeslider for horizontal scrolling
+        Plotly.newPlot('plot-ts', tsTraces, { 
+            title: 'Temporal Evolution', 
+            margin: {t:40, b:80}, 
+            xaxis: { 
+                title: 'Time (t)', 
+                rangeslider: { visible: true }, // This adds the scroll/zoom bar
+                autorange: true 
+            }
+        }, {responsive: true});
 
         const xVar = document.getElementById('phaseX').value;
         const yVar = document.getElementById('phaseY').value;
