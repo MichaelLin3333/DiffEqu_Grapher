@@ -8,37 +8,46 @@
     <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
     <style>
         :root { --primary: #2563eb; --bg: #f8fafc; --border: #e2e8f0; }
-        body { font-family: system-ui, -apple-system, sans-serif; margin: 0; display: flex; height: 100vh; background: var(--bg); color: #1e293b; }
+        body { font-family: system-ui, sans-serif; margin: 0; display: flex; height: 100vh; background: var(--bg); color: #1e293b; }
         #sidebar { width: 380px; background: white; border-right: 1px solid var(--border); padding: 20px; overflow-y: auto; box-shadow: 2px 0 5px rgba(0,0,0,0.02); }
         h2 { margin-top: 0; font-size: 1.25rem; color: var(--primary); border-bottom: 2px solid var(--bg); padding-bottom: 10px; }
-        h3 { font-size: 0.9rem; margin: 15px 0 10px 0; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; }
+        h3 { font-size: 0.85rem; margin: 15px 0 10px 0; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; }
         .card { background: #ffffff; border: 1px solid var(--border); padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-        input[type="text"], input[type="number"], select { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; }
-        .eq-input, .param-num-input, .init-input { font-family: "SFMono-Regular", Consolas, monospace; font-size: 1rem; color: #1e293b; }
-        .eq-input { background: #f8fafc; border: 1px solid #cbd5e1 !important; }
+        input, select { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box; margin-bottom: 5px; }
+        .eq-input, .param-num-input, .init-input { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.95rem; }
+        .eq-input { background: #f8fafc; }
         .math-label { font-family: "Times New Roman", Times, serif; font-style: italic; font-size: 1.1rem; font-weight: 500; }
-        .eq-row { display: grid; grid-template-columns: 80px 1fr; align-items: center; gap: 8px; margin-bottom: 8px; }
-        .init-row { display: grid; grid-template-columns: 80px 1fr; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.85rem; }
+        .eq-row, .init-row { display: grid; grid-template-columns: 85px 1fr; align-items: center; gap: 8px; margin-bottom: 8px; }
         .param-grid { display: grid; grid-template-columns: 50px 1fr 80px; gap: 10px; align-items: center; margin-bottom: 10px; }
         #viewer { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
-        .plot-container { background: white; border-radius: 8px; border: 1px solid var(--border); min-height: 450px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .plot-container { background: white; border-radius: 8px; border: 1px solid var(--border); min-height: 450px; }
     </style>
 </head>
 <body>
 
 <div id="sidebar">
     <h2>System Explorer</h2>
+    
     <div class="card">
-        <h3>1. State Variables</h3>
+        <h3>1. Time Horizon</h3>
+        <label style="font-size: 0.7rem;">Simulate until T =</label>
+        <input type="number" id="tMax" value="200" step="10" oninput="update()">
+        <p style="font-size: 0.65rem; color: #94a3b8;">Increase this to see behavior past T=100. Use the slider on the graph to scroll.</p>
+    </div>
+
+    <div class="card">
+        <h3>2. State Variables</h3>
         <input type="text" id="varList" value="x, y" oninput="setupSystem()">
     </div>
-    <div id="equation-container" class="card"><h3>2. Differential Equations</h3></div>
-    <div id="parameter-container" class="card"><h3>3. Dynamic Parameters</h3></div>
-    <div class="card">
-        <h3>4. Simulation Settings</h3>
-        <label style="font-size: 0.7rem;">Total Time Steps</label>
-        <input type="number" id="totalSteps" value="1000" oninput="update()">
+
+    <div id="equation-container" class="card">
+        <h3>3. Differential Equations</h3>
     </div>
+
+    <div id="parameter-container" class="card">
+        <h3>4. Dynamic Parameters</h3>
+    </div>
+
     <div class="card">
         <h3>5. Phase Plane View</h3>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -64,12 +73,15 @@ function setupSystem() {
     const oldEqs = {}; const oldInits = {};
     eqContainer.querySelectorAll('.eq-input').forEach(i => oldEqs[i.dataset.var] = i.value);
     eqContainer.querySelectorAll('.init-input').forEach(i => oldInits[i.dataset.var] = i.value);
-    eqContainer.innerHTML = '<h3>2. Differential Equations</h3>';
+    
+    eqContainer.innerHTML = '<h3>3. Differential Equations</h3>';
     stateVars.forEach((v) => {
         const defEq = v === 'x' ? "a*x - b*x*y" : v === 'y' ? "c*x*y - d*y" : "0.1*"+v;
-        eqContainer.innerHTML += `<div class="eq-row"><span class="math-label">d${v}/dt =</span><input type="text" class="eq-input" data-var="${v}" value="${oldEqs[v] || defEq}" oninput="scanParameters()"></div>
+        eqContainer.innerHTML += `
+            <div class="eq-row"><span class="math-label">d${v}/dt =</span><input type="text" class="eq-input" data-var="${v}" value="${oldEqs[v] || defEq}" oninput="scanParameters()"></div>
             <div class="init-row"><span class="math-label" style="font-size:0.85rem">${v}(0) =</span><input type="number" class="init-input" data-var="${v}" value="${oldInits[v] || 10}" step="any" oninput="update()"></div>`;
     });
+
     const px = document.getElementById('phaseX'); const py = document.getElementById('phaseY');
     [px, py].forEach(select => {
         const current = select.value;
@@ -92,12 +104,12 @@ function scanParameters() {
         } catch(e) {}
     });
     const paramContainer = document.getElementById('parameter-container');
-    paramContainer.innerHTML = '<h3>3. Dynamic Parameters</h3>';
+    paramContainer.innerHTML = '<h3>4. Dynamic Parameters</h3>';
     foundParams.forEach(p => {
         if (params[p] === undefined) params[p] = 0.5;
         const div = document.createElement('div');
         div.className = 'param-grid';
-        div.innerHTML = `<span class="math-label">${p}</span><input type="range" class="p-slider" min="0" max="5" step="0.01" value="${params[p]}"><input type="number" class="param-num-input" step="any" value="${params[p]}">`;
+        div.innerHTML = `<span class="math-label">${p}</span><input type="range" class="p-slider" min="0" max="10" step="0.01" value="${params[p]}"><input type="number" class="param-num-input" step="any" value="${params[p]}">`;
         const slider = div.querySelector('.p-slider'); const num = div.querySelector('.param-num-input');
         slider.oninput = () => { params[p] = parseFloat(slider.value); num.value = slider.value; update(); };
         num.oninput = () => { params[p] = parseFloat(num.value); slider.value = num.value; update(); };
@@ -106,8 +118,9 @@ function scanParameters() {
     update();
 }
 
-function solveRK4(system, y0, dt, steps) {
+function solveRK4(system, y0, dt, tMax) {
     let y = [...y0]; let t = 0; const history = [[t, ...y]];
+    const steps = Math.floor(tMax / dt);
     for (let i = 0; i < steps; i++) {
         const k1 = system(t, y).map(v => v * dt);
         const k2 = system(t + dt/2, y.map((v, j) => v + k1[j]/2)).map(v => v * dt);
@@ -124,27 +137,31 @@ function update() {
         const eqInputs = document.querySelectorAll('.eq-input');
         const compiledEqs = Array.from(eqInputs).map(i => math.compile(i.value));
         const initValues = Array.from(document.querySelectorAll('.init-input')).map(i => parseFloat(i.value || 0));
-        const steps = parseInt(document.getElementById('totalSteps').value) || 500;
+        const tMax = parseFloat(document.getElementById('tMax').value) || 100;
         
+        // Dynamic dt: ensure we have enough resolution but don't lag the browser
+        const dt = tMax > 1000 ? 0.5 : 0.05;
+
         const system = (t, y) => {
             const scope = { t, ...params };
             stateVars.forEach((v, i) => scope[v] = y[i]);
             return compiledEqs.map(eq => eq.evaluate(scope));
         };
         
-        const results = solveRK4(system, initValues, 0.1, steps);
+        const results = solveRK4(system, initValues, dt, tMax);
         const tsTraces = stateVars.map((v, i) => ({
             x: results.map(r => r[0]), y: results.map(r => r[i+1]), name: v, mode: 'lines'
         }));
 
-        // ADDED: xaxis rangeslider for horizontal scrolling
-        Plotly.newPlot('plot-ts', tsTraces, { 
+        Plotly.react('plot-ts', tsTraces, { 
             title: 'Temporal Evolution', 
-            margin: {t:40, b:80}, 
+            margin: {t:40, b:80},
             xaxis: { 
                 title: 'Time (t)', 
-                rangeslider: { visible: true }, // This adds the scroll/zoom bar
-                autorange: true 
+                rangeslider: { visible: true },
+                // This keeps the initial view bounded (e.g., 0 to 100) 
+                // but allows the slider to scroll to the full tMax
+                range: [0, Math.min(100, tMax)] 
             }
         }, {responsive: true});
 
@@ -152,7 +169,7 @@ function update() {
         const yVar = document.getElementById('phaseY').value;
         const xIdx = stateVars.indexOf(xVar) + 1;
         const yIdx = stateVars.indexOf(yVar) + 1;
-        Plotly.newPlot('plot-phase', [{
+        Plotly.react('plot-phase', [{
             x: results.map(r => r[xIdx]), y: results.map(r => r[yIdx]), mode: 'lines', line: { color: '#2563eb' }
         }], { title: `Phase Space: ${yVar} vs ${xVar}`, margin: {t:40}, xaxis: {title: xVar}, yaxis: {title: yVar}}, {responsive: true});
     } catch (e) {}
